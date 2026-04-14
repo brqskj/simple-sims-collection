@@ -1,0 +1,5 @@
+
+
+ctrl + shift + p                    comandi
+
+shift + alt + f                     formatta

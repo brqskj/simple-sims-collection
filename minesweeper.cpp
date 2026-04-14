@@ -1,156 +1,150 @@
+/*
+    TODO:
+    - add game over and victory
+    - add canvas size selection by input
+*/
 
-#include <iostream>
 #include "raylib.h"
+#include <iostream>
 #include <vector>
-#include <ctime>
-#include <cstdlib>
-#define mina 99
-
-const int righe = 12, colonne = 15;
-const int num_mine = 10;
-int mouse[2];
+#include <cmath>
+using namespace std;
 
 
-class Campo {
-public:
-    int prossimita[righe][colonne];
-    int scoperta[righe][colonne];
+struct Field {
+    unsigned int columns = 20;
+    unsigned int rows = columns * 0.5f;
+    float minesPercent = 10.f;
+    float cellSize;
 
-    Campo() {
+    vector <vector <bool>> mines;
+    vector <vector <bool>> discovered;
+    vector <vector <int>> proximity;
 
-        // azzera
-        for (int y = 0; y < righe; y++) {
-            for (int x = 0; x < colonne; x++) {
-                this->scoperta[y][x] = 0;
-                this->prossimita[y][x] = 0;
+
+    Field() {
+        // initialize
+        mines.assign(rows, vector <bool>(columns, 0));
+        discovered.assign(rows, vector <bool>(columns, 0));
+        proximity.assign(rows, vector <int>(columns, 0));
+
+
+        // populate mines
+        unsigned int maxMines = columns * rows * (minesPercent * 0.01f);
+
+        for (size_t y = 0; y < rows; y++) {
+            for (size_t x = 0; x < columns; x++) {
+                if (maxMines > 0 && GetRandomValue(0, 100) < 15) {
+                    mines[y][x] = true;
+                    maxMines--;
+                }
+                else mines[y][x] = false;
             }
-        }
+        }        
 
-        // genera mine random
-        std::srand(std::time(nullptr));
 
-        for (int i = 0; i < num_mine; i++) {
-            int x = std::rand() % colonne;
-            int y = std::rand() % righe;
+        // calculate near mines
+        for (int y = 0; y < rows; y++) {
+            for (int x = 0; x < columns; x++) {
 
-            if (this->prossimita[y][x] != mina) {
-                this->prossimita[y][x] = mina;
-            }
-        }
+                if (mines[y][x]) continue;
 
-        // per ogni casella
-        for (int y = 0; y < righe; y++) {
-            for (int x = 0; x < colonne; x++) {
+                int count = 0;
+                // count neighbours
+                for (int offsetY = -1; offsetY <= 1; offsetY++) {
+                    for (int offsetX = -1; offsetX <= 1; offsetX++) {
+                        int checkY = y + offsetY;
+                        int checkX = x + offsetX;
 
-                if (this->prossimita[y][x] == mina) continue;     // salta mine
-                int conta = 0;
-
-                // guarda i vicini
-                for (int y2 = y-1; y2 <= y+1; y2++) {
-                    if (y2 < 0 || y2 == righe) continue;    // check limiti
-
-                    for (int x2 = x-1; x2 <= x+1; x2++) {
-                        if (x2 < 0 || x2 == colonne) continue;          // check limiti
-                        if (this->prossimita[y2][x2] == mina) conta++;      // conta mine
+                        // Verifichiamo di non uscire dai bordi del vettore
+                        if (checkY >= 0 && checkY < rows && checkX >= 0 && checkX < columns) {
+                            if (mines[checkY][checkX]) count++;
+                        }
                     }
                 }
 
-                this->prossimita[y][x] = conta;
+                proximity[y][x] = count;
             }
         }
+
+
+        updateSize();
     }
-};
 
-class Schermo {
-public:
-    float colonna[colonne];
-    float riga[righe];
-    float cell_height;
-    float cell_width;
 
-    Schermo() {
-        float screen_height = GetScreenHeight();
-        float screen_width = GetScreenWidth();
-        cell_height = screen_height / righe;
-        cell_width = screen_width / colonne;
+    void discover(Vector2 pos) {
+        int x = (int)(pos.x / cellSize);
+        int y = (int)(pos.y / cellSize);
 
-        for (int i = 0; i < colonne; i++) {
-            this->colonna[i] = cell_width * i;
-        }
-        for (int i = 0; i < righe; i++) {
-            this->riga[i] = cell_height * i;
+        if (y >= 0 && y < rows && x >= 0 && x < columns) {
+            discovered[y][x] = true;
         }
     }
-};
 
-void disegnaCelle(Schermo& schermo, Campo& campo) {
 
-    for (int y = 0; y < righe; y++) {
-        for (int x = 0; x < colonne; x++) {
-            
-            if (campo.scoperta[y][x]) {
-                Color colore;
-                switch (campo.prossimita[y][x]) {
-                    case 0: colore = WHITE;      break;
-                    case 1: colore = LIGHTGRAY;  break;
-                    case 2: colore = YELLOW;     break;
-                    case 3: colore = ORANGE;     break;
-                    case 4: colore = PINK;       break;
-                    case 5: colore = RED;        break;
-                    case 6: colore = MAROON;     break;
-                    case 7: colore = PURPLE;     break;
-                    case 8: colore = BLACK;      break;
-                    case 99: colore = BLACK;     break;  // mina
-                }
+    void updateSize() {
+        cellSize = fmin(
+            GetScreenWidth() / columns,
+            GetScreenHeight() / rows
+        );
+    }
+
+    void draw() {
+        Color color;
+
+        for (size_t y = 0; y < mines.size(); y++) {
+            for (size_t x = 0; x < mines[y].size(); x++) {
                 
-                DrawRectangle(schermo.colonna[x], schermo.riga[y], schermo.cell_width, schermo.cell_height, colore);
+                Rectangle rec = {
+                    x * cellSize,
+                    y * cellSize,
+                    cellSize, 
+                    cellSize
+                };
+
+                DrawRectangleLinesEx(rec, 2.f, DARKBLUE);
+                if (!discovered[y][x]) continue;
+
+                switch (proximity[y][x]) {
+                    case 0: color = GRAY;       break;
+                    case 1: color = DARKGREEN;  break;
+                    case 2: color = GREEN;      break;
+                    case 3: color = YELLOW;     break;
+                    case 4: color = ORANGE;     break;
+                    case 5: color = RED;        break;
+                    case 6: color = PINK;       break;
+                    case 7: color = PURPLE;     break;
+                    case 8: color = DARKPURPLE; break;
+                }
+
+                DrawRectangleRec(rec, color);
+                DrawRectangleLinesEx(rec, 2.f, DARKBLUE);
             }
-
-            /*if (y == mouse[0] && x == mouse[1]) {     // evidenzia
-                DrawRectangle(schermo.colonna[x], schermo.riga[y], schermo.cell_width, schermo.cell_height, BLUE);
-            }*/
-
-            DrawRectangleLines(schermo.colonna[x], schermo.riga[y], schermo.cell_width, schermo.cell_height, BLACK);
         }
     }
-}
+};
 
-void funzioniMouse(Schermo& schermo, Campo& campo) {
 
-    mouse[0] = GetMouseY() / schermo.cell_height;
-    mouse[1] = GetMouseX() / schermo.cell_width;
-
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        if (!campo.scoperta[mouse[0]][mouse[1]]) {
-            campo.scoperta[mouse[0]][mouse[1]] = 1;
-        }
-
-        if (campo.prossimita[mouse[0]][mouse[1]] == mina) {
-            //ClearBackground(BLACK);
-            //DrawText("GAME OVER", GetScreenWidth()/2, GetScreenHeight()/2, 40, RED);
-            //Sleep(3000);
-            exit(0);
-        }
-    }
+void draw(Field& field) {
+    BeginDrawing();
+    ClearBackground(BLUE);
+    
+    field.draw();
+    
+    EndDrawing();
 }
 
 int main() {
-
-    InitWindow(0, 0, "Minesweeper by reggere");
-    SetWindowState(FLAG_FULLSCREEN_MODE);
+    InitWindow(1000, 500, "minesweeper");
     SetTargetFPS(30);
+    SetWindowState(FLAG_WINDOW_RESIZABLE);
 
-    Schermo schermo;
-    Campo campo;
+    Field field;
 
     while (!WindowShouldClose()) {
-
-        BeginDrawing();
-            ClearBackground(GREEN);
-            disegnaCelle(schermo, campo);
-        EndDrawing();
-
-        funzioniMouse(schermo, campo);
+        draw(field);
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) field.discover(GetMousePosition());
+        if (IsWindowResized) field.updateSize();
     }
 
     CloseWindow();

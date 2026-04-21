@@ -1,8 +1,3 @@
-/*
-    TODO:
-    - add game over and victory
-    - add canvas size selection by input
-*/
 
 #include "raylib.h"
 #include <iostream>
@@ -13,8 +8,8 @@ using namespace std;
 
 struct Field {
     unsigned int columns = 20;
-    unsigned int rows = columns * 0.5f;
-    float minesPercent = 10.f;
+    unsigned int rows = 10;
+    unsigned int minesNum = 10;
     float cellSize;
 
     vector <vector <bool>> mines;
@@ -28,22 +23,20 @@ struct Field {
         discovered.assign(rows, vector <bool>(columns, 0));
         proximity.assign(rows, vector <int>(columns, 0));
 
-
         // populate mines
-        unsigned int maxMines = columns * rows * (minesPercent * 0.01f);
+        unsigned int remaining = minesNum;
 
         for (size_t y = 0; y < rows; y++) {
             for (size_t x = 0; x < columns; x++) {
-                if (maxMines > 0 && GetRandomValue(0, 100) < 15) {
+                if (remaining > 0 && GetRandomValue(0, 100) < 15) {
                     mines[y][x] = true;
-                    maxMines--;
+                    remaining--;
                 }
                 else mines[y][x] = false;
             }
         }        
 
-
-        // calculate near mines
+        // calculate proximity values
         for (int y = 0; y < rows; y++) {
             for (int x = 0; x < columns; x++) {
 
@@ -67,20 +60,32 @@ struct Field {
             }
         }
 
-
         updateSize();
     }
 
-
-    void discover(Vector2 pos) {
+    int discover(Vector2 pos) {
         int x = (int)(pos.x / cellSize);
         int y = (int)(pos.y / cellSize);
 
         if (y >= 0 && y < rows && x >= 0 && x < columns) {
             discovered[y][x] = true;
+            if (mines[y][x]) return -1;     // -1 game over
+            else return winCheck();         // 0 safe, 1 won
         }
     }
 
+    bool winCheck() {
+        unsigned int count = 0;
+
+        for (size_t i = 0; i < discovered.size(); i++) {
+            for (bool cell : discovered[i]) {
+                count += cell;
+                if (count == columns * rows - minesNum) return true;
+            }
+        }
+
+        return false;
+    }
 
     void updateSize() {
         cellSize = fmin(
@@ -125,13 +130,14 @@ struct Field {
 };
 
 
-void draw(Field& field) {
-    BeginDrawing();
-    ClearBackground(BLUE);
-    
-    field.draw();
-    
-    EndDrawing();
+void finalDisplay(const int result) {
+    while (!GetKeyPressed()) {
+        BeginDrawing();
+        ClearBackground(BLACK);
+        if (result) DrawText("YOU WON", 0, 0, 200.f, RED);
+        else DrawText("YOU LOST", 0, 0, 200.f, RED);
+        EndDrawing();
+    }
 }
 
 int main() {
@@ -142,9 +148,21 @@ int main() {
     Field field;
 
     while (!WindowShouldClose()) {
-        draw(field);
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) field.discover(GetMousePosition());
+        // input
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            int result = field.discover(GetMousePosition());
+            if (result != 0) {
+                finalDisplay(result);
+                return 0;
+            }
+        }
         if (IsWindowResized) field.updateSize();
+
+        // draw
+        BeginDrawing();
+        ClearBackground(BLUE);
+        field.draw();
+        EndDrawing();
     }
 
     CloseWindow();
